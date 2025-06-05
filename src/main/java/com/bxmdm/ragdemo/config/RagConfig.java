@@ -15,6 +15,6 @@ import java.util.List;
 public class RagConfig {
     @Bean
     ChatClient chatClient(ChatClient.Builder builder) {
-        return builder.defaultSystem("你将作为一名Java开发语言的专家，对于用户的使用需求作出解答").build();
+        return builder.defaultSystem("你将作为一名Sense-U产品说明的智能助理，对于用户的使用问题作出解答").build();
     }
 }

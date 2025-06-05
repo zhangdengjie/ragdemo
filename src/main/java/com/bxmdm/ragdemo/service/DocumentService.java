@@ -6,14 +6,18 @@ import static com.bxmdm.ragdemo.reader.ParagraphTextReader.START_PARAGRAPH_NUMBE
 import cn.hutool.core.util.ArrayUtil;
 import com.bxmdm.ragdemo.reader.ParagraphTextReader;
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.apache.poi.ss.usermodel.*;
+import org.apache.tika.exception.TikaException;
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -22,6 +26,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileUrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.xml.sax.SAXException;
 import reactor.core.publisher.Flux;
 
 /**
@@ -84,6 +89,54 @@ public class DocumentService {
 			e.printStackTrace();
 		}
 		return docs;
+	}
+
+	public void parseExcel() throws IOException, TikaException, SAXException {
+		// 1. 解析 Excel 内容
+		AutoDetectParser parser = new AutoDetectParser();
+		BodyContentHandler handler = new BodyContentHandler(-1); // no content length limit
+		Metadata metadata = new Metadata();
+
+		ClassPathResource resource = new ClassPathResource("Baby售后相关问题.xlsx");
+		parser.parse(resource.getInputStream(), handler, metadata);
+
+		String content = handler.toString();
+
+		ParagraphTextReader reader = new ParagraphTextReader(resource, 5);
+		reader.setContent(content);
+		vectorStore.add(reader.get());
+//		// 2. 构建 Document 对象
+//		Document doc = new Document(
+//				UUID.randomUUID().toString(),  // 可自定义 ID
+//				content,
+//				Collections.singletonMap("filename", resource.getFilename())
+//		);
+//		vectorStore.add(Collections.singletonList(doc));
+	}
+
+	public void parseAQ() throws IOException {
+		List<Document> documents = new ArrayList<>();
+
+		ClassPathResource resource = new ClassPathResource("cam售后相关问题 .xlsx");
+		Workbook workbook = WorkbookFactory.create(resource.getInputStream());
+		Sheet sheet = workbook.getSheetAt(0);
+
+		for (Row row : sheet) {
+			Cell questionCell = row.getCell(0);
+			Cell answerCell = row.getCell(1);
+
+			if (questionCell == null || answerCell == null) continue;
+
+			String question = questionCell.getStringCellValue().trim();
+			String answer = answerCell.getStringCellValue().trim();
+
+			if (!question.isEmpty() && !answer.isEmpty()) {
+				String content = "Q: " + question + "\nA: " + answer;
+				Document doc = new Document(content);
+				documents.add(doc);
+			}
+		}
+		vectorStore.add(documents);
 	}
 
 	private List<Document> paragraphTextReader() {
@@ -150,8 +203,12 @@ public class DocumentService {
 	 * @return 文档列表
 	 */
 	public List<Document> search(String keyword) {
-		List<Document> documentList = vectorStore.similaritySearch(keyword);
-		return documentList;
+		return Collections.singletonList(vectorStore.similaritySearch(keyword).stream().sorted(new Comparator<Document>() {
+			@Override
+			public int compare(Document o1, Document o2) {
+				return o2.getScore() - o1.getScore() > 0 ? 1 : -1;
+			}
+		}).findFirst().get());
 //		return mergeDocuments(documentList);
 	}
 
@@ -167,7 +224,12 @@ public class DocumentService {
 
 		//提取文本内容
 		String content = documents.stream()
-				.map(Document::getFormattedContent)
+				.map(new Function<Document, String>() {
+					@Override
+					public String apply(Document document) {
+						return document.getText();
+					}
+				})
 				.collect(Collectors.joining("\n"));
 
 		//封装prompt并调用大模型

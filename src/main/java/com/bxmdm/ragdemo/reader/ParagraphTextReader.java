@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import org.apache.tika.utils.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -90,6 +92,19 @@ public class ParagraphTextReader implements DocumentReader {
 		return this.customMetadata;
 	}
 
+	private String content;
+
+	public void setContent(String content) {
+		this.content = content;
+	}
+
+	public String getContent() throws IOException {
+		if (StringUtils.isEmpty(content)) {
+			content = StreamUtils.copyToString(this.resource.getInputStream(), this.charset);
+		}
+		return content;
+	}
+
 	/**
 	 * 读取文本内容,并根据换行进行分段,采用窗口模式,窗口为段落的数量
 	 *
@@ -100,7 +115,7 @@ public class ParagraphTextReader implements DocumentReader {
 		try {
 
 			List<Document> readDocuments = new ArrayList();
-			String document = StreamUtils.copyToString(this.resource.getInputStream(), this.charset);
+			String document = getContent();
 
 			// Inject source information as a metadata.
 			this.customMetadata.put(CHARSET_METADATA, this.charset.name());
