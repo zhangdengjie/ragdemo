@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("/api/vi/rag")
@@ -31,6 +32,13 @@ public class IndexController {
 		return ResponseEntity.ok("success");
 	}
 
+	@Operation(summary = "解析文档")
+	@GetMapping("/analysis")
+	public ResponseEntity analysis(@RequestBody MultipartFile file) {
+		documentService.analysisDocument();
+		return ResponseEntity.ok("success");
+	}
+
 	@Operation(summary = "搜索文档")
 	@GetMapping("/search")
 	public ResponseEntity<List<Document>> searchDoc(@RequestParam String keyword) {
@@ -39,9 +47,9 @@ public class IndexController {
 
 
 	@Operation(summary = "问答文档")
-	@GetMapping("/chat")
-	public ResponseEntity chat(@RequestParam String message) {
-		return ResponseEntity.ok(documentService.chat(message));
+	@GetMapping(value = "/chat",produces = "text/html;charset=UTF-8")
+	public Flux<String> chat(@RequestParam String message) {
+		return documentService.chat(message);
 	}
 
 

@@ -13,13 +13,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
+
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.ollama.OllamaChatClient;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileUrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import reactor.core.publisher.Flux;
 
 /**
  * @Description: 文档服务
@@ -34,7 +37,7 @@ public class DocumentService {
 	private VectorStore vectorStore;
 
 	@Autowired
-	private OllamaChatClient ollamaChatClient;
+	private ChatClient ollamaChatClient;
 
 	private static final String PATH = "D:\\demo\\ai\\path\\";
 
@@ -65,12 +68,32 @@ public class DocumentService {
 		vectorStore.add(documentList);
 	}
 
+	public void analysisDocument() {
+		List<Document> documentList = paragraphTextReader();
+		vectorStore.add(documentList);
+	}
+
 	private List<Document> paragraphTextReader(File file) {
 		List<Document> docs = null;
 		try {
 			ParagraphTextReader reader = new ParagraphTextReader(new FileUrlResource(file.toURI().toURL()), 5);
 			reader.getCustomMetadata().put("filename", file.getName());
 			reader.getCustomMetadata().put("filepath", file.getAbsolutePath());
+			docs = reader.get();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return docs;
+	}
+
+	private List<Document> paragraphTextReader() {
+		List<Document> docs = null;
+		try {
+			ClassPathResource resource = new ClassPathResource("Spring AI简介.txt");
+
+			ParagraphTextReader reader = new ParagraphTextReader(resource, 5);
+			reader.getCustomMetadata().put("filename", resource.getFilename());
+			reader.getCustomMetadata().put("filepath", resource.getPath());
 			docs = reader.get();
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -98,7 +121,7 @@ public class DocumentService {
 			int minParagraphNum = maxParagraphNum;
 			for (Document document : docListEntry.getValue()) {
 				//文档内容根据回车进行分段
-				String[] tempPs = document.getContent().split("\n");
+				String[] tempPs = document.getFormattedContent().split("\n");
 				//获取文档开始段落编码
 				int startParagraphNumber = (int) document.getMetadata().get(START_PARAGRAPH_NUMBER);
 				if (minParagraphNum > startParagraphNumber) {
@@ -127,7 +150,9 @@ public class DocumentService {
 	 * @return 文档列表
 	 */
 	public List<Document> search(String keyword) {
-		return mergeDocuments(vectorStore.similaritySearch(keyword));
+		List<Document> documentList = vectorStore.similaritySearch(keyword);
+		return documentList;
+//		return mergeDocuments(documentList);
 	}
 
 	/**
@@ -136,18 +161,17 @@ public class DocumentService {
 	 * @param message 输入内容
 	 * @return 回答内容
 	 */
-	public String chat(String message) {
+	public Flux<String> chat(String message) {
 		//查询获取文档信息
 		List<Document> documents = search(message);
 
 		//提取文本内容
 		String content = documents.stream()
-				.map(Document::getContent)
+				.map(Document::getFormattedContent)
 				.collect(Collectors.joining("\n"));
 
 		//封装prompt并调用大模型
-		String chatResponse = ollamaChatClient.call(getChatPrompt2String(message, content));
-		return chatResponse;
+		return ollamaChatClient.prompt().user(getChatPrompt2String(message, content)).stream().content();
 	}
 
 	/**

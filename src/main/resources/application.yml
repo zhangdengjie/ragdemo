@@ -1,18 +1,18 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://192.168.3.220:5432/postgres
-    username: postgres
-    password: postgres
   ai:
     vectorstore:
-      pgvector:
-        dimensions: 768
+      chroma:
+        client:
+          host: http://192.168.0.123
+          port: 8000
+        initialize-schema: true
     ollama:
       base-url: http://localhost:11434
       chat:
-        model: qwen:7b
+        model: gemma3:12b
       embedding:
-        model: mofanke/dmeta-embedding-zh
+#        model: mofanke/dmeta-embedding-zh
+        model: nomic-embed-text:latest
 # springdoc-openapi项目配置`
 springdoc:
   swagger-ui:
