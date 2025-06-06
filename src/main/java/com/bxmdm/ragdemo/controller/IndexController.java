@@ -11,12 +11,7 @@ import org.apache.tika.exception.TikaException;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.xml.sax.SAXException;
 import reactor.core.publisher.Flux;
@@ -55,9 +50,10 @@ public class IndexController {
 		return ResponseEntity.ok(documentService.search(keyword));
 	}
 
-
+	@CrossOrigin(origins = "*")
 	@Operation(summary = "问答文档")
-	@GetMapping(value = "/chat",produces = "text/html;charset=UTF-8")
+//	@GetMapping(value = "/chat",produces = "text/html;charset=UTF-8")
+	@GetMapping(value = "/chat",produces = "text/event-stream; charset=UTF-8")
 	public Flux<String> chat(@RequestParam String message) {
 		return documentService.chat(message);
 	}

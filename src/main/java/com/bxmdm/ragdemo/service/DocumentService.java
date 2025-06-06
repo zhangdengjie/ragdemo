@@ -121,15 +121,12 @@ public class DocumentService {
 		Workbook workbook = WorkbookFactory.create(resource.getInputStream());
 		Sheet sheet = workbook.getSheetAt(0);
 
-		for (Row row : sheet) {
-			Cell questionCell = row.getCell(0);
-			Cell answerCell = row.getCell(1);
-
-			if (questionCell == null || answerCell == null) continue;
-
-			String question = questionCell.getStringCellValue().trim();
-			String answer = answerCell.getStringCellValue().trim();
-
+		Iterator<Row> rowIterator = sheet.rowIterator();
+		while (rowIterator.hasNext()) {
+			Row row = rowIterator.next();
+			if (row.getRowNum() == 0) continue; // Skip header row
+			String question = row.getCell(0).getStringCellValue();
+			String answer = row.getCell(1).getStringCellValue();
 			if (!question.isEmpty() && !answer.isEmpty()) {
 				String content = "Q: " + question + "\nA: " + answer;
 				Document doc = new Document(content);
@@ -203,12 +200,13 @@ public class DocumentService {
 	 * @return 文档列表
 	 */
 	public List<Document> search(String keyword) {
-		return Collections.singletonList(vectorStore.similaritySearch(keyword).stream().sorted(new Comparator<Document>() {
-			@Override
-			public int compare(Document o1, Document o2) {
-				return o2.getScore() - o1.getScore() > 0 ? 1 : -1;
-			}
-		}).findFirst().get());
+		return vectorStore.similaritySearch(keyword);
+//		return Collections.singletonList(vectorStore.similaritySearch(keyword).stream().sorted(new Comparator<Document>() {
+//			@Override
+//			public int compare(Document o1, Document o2) {
+//				return o2.getScore() - o1.getScore() > 0 ? 1 : -1;
+//			}
+//		}).findFirst().get());
 //		return mergeDocuments(documentList);
 	}
 
