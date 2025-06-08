@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.poi.ss.usermodel.*;
@@ -19,6 +18,8 @@ import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -91,33 +92,10 @@ public class DocumentService {
 		return docs;
 	}
 
-	public void parseExcel() throws IOException, TikaException, SAXException {
-		// 1. 解析 Excel 内容
-		AutoDetectParser parser = new AutoDetectParser();
-		BodyContentHandler handler = new BodyContentHandler(-1); // no content length limit
-		Metadata metadata = new Metadata();
-
-		ClassPathResource resource = new ClassPathResource("Baby售后相关问题.xlsx");
-		parser.parse(resource.getInputStream(), handler, metadata);
-
-		String content = handler.toString();
-
-		ParagraphTextReader reader = new ParagraphTextReader(resource, 5);
-		reader.setContent(content);
-		vectorStore.add(reader.get());
-//		// 2. 构建 Document 对象
-//		Document doc = new Document(
-//				UUID.randomUUID().toString(),  // 可自定义 ID
-//				content,
-//				Collections.singletonMap("filename", resource.getFilename())
-//		);
-//		vectorStore.add(Collections.singletonList(doc));
-	}
-
-	public void parseAQ() throws IOException {
+	public void parseCameraAQ() throws IOException {
 		List<Document> documents = new ArrayList<>();
 
-		ClassPathResource resource = new ClassPathResource("cam售后相关问题 .xlsx");
+		ClassPathResource resource = new ClassPathResource("Baby售后相关问题.xlsx");
 		Workbook workbook = WorkbookFactory.create(resource.getInputStream());
 		Sheet sheet = workbook.getSheetAt(0);
 
@@ -125,8 +103,16 @@ public class DocumentService {
 		while (rowIterator.hasNext()) {
 			Row row = rowIterator.next();
 			if (row.getRowNum() == 0) continue; // Skip header row
-			String question = row.getCell(0).getStringCellValue();
-			String answer = row.getCell(1).getStringCellValue();
+			Cell cell0 = row.getCell(0);
+			if (cell0 == null) {
+				continue;
+			}
+			String question = cell0.getStringCellValue();
+			Cell cell1 = row.getCell(1);
+			if (cell1 == null) {
+				continue;
+			}
+			String answer = cell1.getStringCellValue();
 			if (!question.isEmpty() && !answer.isEmpty()) {
 				String content = "Q: " + question + "\nA: " + answer;
 				Document doc = new Document(content);
@@ -217,21 +203,48 @@ public class DocumentService {
 	 * @return 回答内容
 	 */
 	public Flux<String> chat(String message) {
-		//查询获取文档信息
+		// 1. 从 VectorStore 中检索相关文档
 		List<Document> documents = search(message);
+//		List<Document> documents = search(message).stream().filter(new Predicate<Document>() {
+//			@Override
+//			public boolean test(Document document) {
+//				return document.getScore() > 0.5;
+//			}
+//		}).toList();
 
-		//提取文本内容
-		String content = documents.stream()
-				.map(new Function<Document, String>() {
-					@Override
-					public String apply(Document document) {
-						return document.getText();
-					}
-				})
-				.collect(Collectors.joining("\n"));
+		if (documents.isEmpty()) {
+			return ollamaChatClient.prompt().user(message).stream().content();
+		}
 
+		// 2. 拼接文档内容为 context 字符串
+		String context = documents.stream()
+				.map(Document::getText)
+				.collect(Collectors.joining("\n\n"));
+
+		// 3. 填充 PromptTemplate
+		PromptTemplate template = new PromptTemplate("""
+			你将作为一名Sense-U产品说明的智能助理，对于用户的使用问题作出解答。
+			请根据以下资料回答问题：
+			
+			{context}
+			
+			问题：
+			{question}
+			""");
+
+		Map<String, Object> variables = Map.of(
+				"context", context,
+				"question", message
+		);
+		Prompt prompt = template.create(variables);
 		//封装prompt并调用大模型
-		return ollamaChatClient.prompt().user(getChatPrompt2String(message, content)).stream().content();
+		return ollamaChatClient.prompt(prompt)
+				.stream()
+				.content();
+//		return ollamaChatClient.prompt()
+//				.user(getChatPrompt2String(message, content))
+//				.stream()
+//				.content();
 	}
 
 	/**
