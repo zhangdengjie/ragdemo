@@ -1,13 +1,21 @@
 spring:
   ai:
     vectorstore:
-      chroma:
-        client:
-          host: http://111.229.197.250
-          port: 8000
+#      chroma:
+#        client:
+#          host: http://111.229.197.250
+#          port: 8000
+#        initialize-schema: true
+      qdrant:
+#        host: 192.168.0.123
+        host: 111.229.197.250
+        port: 6334
+        use-tls: false  # 根据实际情况设置
         initialize-schema: true
+#        collection-name: documents
     ollama:
       base-url: http://111.229.197.250:11434
+#      base-url: http://localhost:11434
       chat:
         model: gemma3:12b
         options:
@@ -15,6 +23,7 @@ spring:
       embedding:
 #        model: mofanke/dmeta-embedding-zh
         model: nomic-embed-text:latest
+#        model: mxbai-embed-large:latest
 # springdoc-openapi项目配置`
 springdoc:
   swagger-ui:
@@ -32,3 +41,11 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+logging:
+  level:
+    org.springframework.ai: DEBUG
+    org.springframework.web.client: DEBUG
+    org.springframework.ai.vectorstore.qdrant: DEBUG
+    io.qdrant: DEBUG
+    io.grpc: TRACE
+    com.qdrant: DEBUG

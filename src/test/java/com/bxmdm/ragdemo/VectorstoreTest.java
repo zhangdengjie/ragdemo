@@ -26,7 +26,7 @@ public class VectorstoreTest {
 		vectorStore.add(documents);
 
 		// Retrieve documents similar to a query
-		List<Document> results = vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(5));
+		List<Document> results = vectorStore.similaritySearch(new SearchRequest.Builder().query("Spring").topK(5).build());
 
 		for (Document result : results) {
 			System.out.println(result);
