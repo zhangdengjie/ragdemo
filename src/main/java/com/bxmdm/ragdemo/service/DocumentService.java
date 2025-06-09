@@ -1,33 +1,25 @@
 package com.bxmdm.ragdemo.service;
 
-import static com.bxmdm.ragdemo.reader.ParagraphTextReader.END_PARAGRAPH_NUMBER;
-import static com.bxmdm.ragdemo.reader.ParagraphTextReader.START_PARAGRAPH_NUMBER;
-
-import cn.hutool.core.util.ArrayUtil;
 import com.bxmdm.ragdemo.reader.ParagraphTextReader;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import org.apache.poi.ss.usermodel.*;
-import org.apache.tika.exception.TikaException;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileUrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.xml.sax.SAXException;
 import reactor.core.publisher.Flux;
 
 /**
@@ -92,10 +84,18 @@ public class DocumentService {
 		return docs;
 	}
 
+	@Autowired
+	private DocTikaDocumentReader docTikaDocumentReader;
+
+	public void parseDoc() {
+		List<Document> documents = docTikaDocumentReader.loadText();
+		vectorStore.add(documents);
+	}
+
 	public void parseCameraAQ() throws IOException {
 		List<Document> documents = new ArrayList<>();
 
-		ClassPathResource resource = new ClassPathResource("Baby售后相关问题.xlsx");
+		ClassPathResource resource = new ClassPathResource("sock售后相关问题.xlsx");
 		Workbook workbook = WorkbookFactory.create(resource.getInputStream());
 		Sheet sheet = workbook.getSheetAt(0);
 
@@ -138,62 +138,16 @@ public class DocumentService {
 	}
 
 	/**
-	 * 合并文档列表
-	 *
-	 * @param documentList 文档列表
-	 * @return 合并后的文档列表
-	 */
-	private List<Document> mergeDocuments(List<Document> documentList) {
-		List<Document> mergeDocuments = new ArrayList();
-		//根据文档来源进行分组
-		Map<String, List<Document>> documentMap = documentList.stream().collect(Collectors.groupingBy(item -> ((String) item.getMetadata().get("source"))));
-		for (Entry<String, List<Document>> docListEntry : documentMap.entrySet()) {
-			//获取最大的段落结束编码
-			int maxParagraphNum = (int) docListEntry.getValue()
-					.stream().max(Comparator.comparing(item -> ((int) item.getMetadata().get(END_PARAGRAPH_NUMBER)))).get().getMetadata().get(END_PARAGRAPH_NUMBER);
-			//根据最大段落结束编码构建一个用于合并段落的空数组
-			String[] paragraphs = new String[maxParagraphNum];
-			//用于获取最小段落开始编码
-			int minParagraphNum = maxParagraphNum;
-			for (Document document : docListEntry.getValue()) {
-				//文档内容根据回车进行分段
-				String[] tempPs = document.getFormattedContent().split("\n");
-				//获取文档开始段落编码
-				int startParagraphNumber = (int) document.getMetadata().get(START_PARAGRAPH_NUMBER);
-				if (minParagraphNum > startParagraphNumber) {
-					minParagraphNum = startParagraphNumber;
-				}
-				//将文档段落列表拷贝到合并段落数组中
-				System.arraycopy(tempPs, 0, paragraphs, startParagraphNumber - 1, tempPs.length);
-			}
-			//合并段落去除空值,并组成文档内容
-			Document mergeDoc = new Document(ArrayUtil.join(ArrayUtil.removeNull(paragraphs), "\n"));
-			//合并元数据
-			mergeDoc.getMetadata().putAll(docListEntry.getValue().get(0).getMetadata());
-			//设置元数据:开始段落编码
-			mergeDoc.getMetadata().put(START_PARAGRAPH_NUMBER, minParagraphNum);
-			//设置元数据:结束段落编码
-			mergeDoc.getMetadata().put(END_PARAGRAPH_NUMBER, maxParagraphNum);
-			mergeDocuments.add(mergeDoc);
-		}
-		return mergeDocuments;
-	}
-
-	/**
 	 * 根据关键词搜索向量库
 	 *
 	 * @param keyword 关键词
 	 * @return 文档列表
 	 */
 	public List<Document> search(String keyword) {
-		return vectorStore.similaritySearch(keyword);
-//		return Collections.singletonList(vectorStore.similaritySearch(keyword).stream().sorted(new Comparator<Document>() {
-//			@Override
-//			public int compare(Document o1, Document o2) {
-//				return o2.getScore() - o1.getScore() > 0 ? 1 : -1;
-//			}
-//		}).findFirst().get());
-//		return mergeDocuments(documentList);
+		return vectorStore.similaritySearch(SearchRequest.builder().topK(3)
+				.similarityThreshold(0.6)
+				.query(keyword)
+				.build());
 	}
 
 	/**
@@ -202,19 +156,9 @@ public class DocumentService {
 	 * @param message 输入内容
 	 * @return 回答内容
 	 */
-	public Flux<String> chat(String message) {
+	public Flux<String> chat(String message,String translatedMessage) {
 		// 1. 从 VectorStore 中检索相关文档
-		List<Document> documents = search(message);
-//		List<Document> documents = search(message).stream().filter(new Predicate<Document>() {
-//			@Override
-//			public boolean test(Document document) {
-//				return document.getScore() > 0.5;
-//			}
-//		}).toList();
-
-		if (documents.isEmpty()) {
-			return ollamaChatClient.prompt().user(message).stream().content();
-		}
+		List<Document> documents = search(translatedMessage);
 
 		// 2. 拼接文档内容为 context 字符串
 		String context = documents.stream()
@@ -223,14 +167,17 @@ public class DocumentService {
 
 		// 3. 填充 PromptTemplate
 		PromptTemplate template = new PromptTemplate("""
-			你将作为一名Sense-U产品说明的智能助理，对于用户的使用问题作出解答。
-			请根据以下资料回答问题：
+			你将作为一名Sense-U产品说明的智能助理，对于用户的问题作出解答。
+			请基于以下文档片段回答问题。注意文档片段可能来自不同的文档，请综合考虑所有相关信息。
+			如果上下文中没有相关信息，请说明无法找到相关信息。
 			
+			上下文：
 			{context}
 			
 			问题：
 			{question}
-			""");
+			
+			请提供准确、详细的回答，并在可能的情况下引用具体的文档片段：""");
 
 		Map<String, Object> variables = Map.of(
 				"context", context,
@@ -238,13 +185,11 @@ public class DocumentService {
 		);
 		Prompt prompt = template.create(variables);
 		//封装prompt并调用大模型
-		return ollamaChatClient.prompt(prompt)
+		return ollamaChatClient
+				.prompt(prompt)
+				.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "007"))
 				.stream()
 				.content();
-//		return ollamaChatClient.prompt()
-//				.user(getChatPrompt2String(message, content))
-//				.stream()
-//				.content();
 	}
 
 	/**

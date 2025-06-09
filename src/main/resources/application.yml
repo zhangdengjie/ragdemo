@@ -43,9 +43,10 @@ knife4j:
     language: zh_cn
 logging:
   level:
-    org.springframework.ai: DEBUG
-    org.springframework.web.client: DEBUG
-    org.springframework.ai.vectorstore.qdrant: DEBUG
-    io.qdrant: DEBUG
-    io.grpc: TRACE
-    com.qdrant: DEBUG
+    org.springframework.ai.chat.client.advisor: debug
+    com.bxmdm.ragdemo: DEBUG
+#    org.springframework.web.client: DEBUG
+#    org.springframework.ai.vectorstore.qdrant: DEBUG
+#    io.qdrant: DEBUG
+#    io.grpc: TRACE
+#    com.qdrant: DEBUG
