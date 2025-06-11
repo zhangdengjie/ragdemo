@@ -9,12 +9,9 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,7 +27,7 @@ public class EnhancedRagService {
     private ChatClient ollamaChatClient;
 
     public void indexDocumentWithSmartChunking() throws IOException {
-        ClassPathResource resource = new ClassPathResource("Camera HD.docx");
+        ClassPathResource resource = new ClassPathResource("Sense-U Baby Monitor 3 User Manual.docx");
         String filename = resource.getFilename();
         String documentId = UUID.randomUUID().toString();
         

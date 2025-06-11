@@ -1,6 +1,7 @@
 target/
 !**/src/main/**/target/
 !**/src/test/**/target/
+src/main/resources/aliyun.json
 
 ### STS ###
 .apt_generated
